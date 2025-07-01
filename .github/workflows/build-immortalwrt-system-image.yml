@@ -4,7 +4,7 @@ on:
   repository_dispatch:
   workflow_dispatch:
   schedule:
-    - cron: '0 20 * * *'
+    - cron: 0 3 * * *
 
 env:
   OPENWRT_BOARD: "a311d-oes_wxy-oect"
