@@ -4,14 +4,14 @@ on:
   repository_dispatch:
   workflow_dispatch:
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '0 20 * * *'
 
 env:
   OPENWRT_BOARD: "a311d-oes_wxy-oect"
-  FEEDS_CONF: config/immortalwrt-master/feeds.conf.default
-  CONFIG_FILE: config/immortalwrt-master/config
-  DIY_P1_SH: config/immortalwrt-master/diy-part1.sh
-  DIY_P2_SH: config/immortalwrt-master/diy-part2.sh
+  FEEDS_CONF: config/immortalwrt/feeds.conf.default
+  CONFIG_FILE: config/immortalwrt/config
+  DIY_P1_SH: config/immortalwrt/diy-part1.sh
+  DIY_P2_SH: config/immortalwrt/diy-part2.sh
   TZ: Asia/Shanghai
 
 jobs:
@@ -186,5 +186,3 @@ jobs:
         with:
           keep_latest: 3
           delete_tags: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
