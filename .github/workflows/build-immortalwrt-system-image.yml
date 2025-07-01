@@ -7,7 +7,7 @@ on:
     - cron: '0 22 * * *'
 
 env:
-  OPENWRT_BOARD: "a311d-oes wxy-oect"
+  OPENWRT_BOARD: "a311d-oes_wxy-oect"
   FEEDS_CONF: config/immortalwrt-master/feeds.conf.default
   CONFIG_FILE: config/immortalwrt-master/config
   DIY_P1_SH: config/immortalwrt-master/diy-part1.sh
