@@ -4,14 +4,14 @@ on:
   repository_dispatch:
   workflow_dispatch:
   schedule:
-    - cron: '0 20 * * *'
+    - cron: '0 22 * * *'
 
 env:
   OPENWRT_BOARD: "a311d-oes wxy-oect"
-  FEEDS_CONF: config/immortalwrt/feeds.conf.default
-  CONFIG_FILE: config/immortalwrt/config
-  DIY_P1_SH: config/immortalwrt/diy-part1.sh
-  DIY_P2_SH: config/immortalwrt/diy-part2.sh
+  FEEDS_CONF: config/immortalwrt-master/feeds.conf.default
+  CONFIG_FILE: config/immortalwrt-master/config
+  DIY_P1_SH: config/immortalwrt-master/diy-part1.sh
+  DIY_P2_SH: config/immortalwrt-master/diy-part2.sh
   TZ: Asia/Shanghai
 
 jobs:
@@ -167,10 +167,18 @@ jobs:
           replacesArtifacts: true
           token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            - Target: ${{ env.OPENWRT_BOARD }}
-            - Firmware Source: [${{ steps.codes.outputs.TAGS_NAME }}](${{ steps.codes.outputs.REPO_URL }})
-            - Default IP: DHCP
-            - Default password: password
+            ### 固件信息
+            - 适配机型: ${{ env.OPENWRT_BOARD }}
+            - 固件源码: [${{ steps.codes.outputs.TAGS_NAME }}](${{ steps.codes.outputs.REPO_URL }})
+            - 默认地址: DHCP
+            - 默认密码: password
+            ### OES：刷入EMMC方法
+            - 解压 OpenWrt 固件压缩包
+            - 将解压后的固件使用写盘工具，如：rufus 写入 U 盘
+            - 插入U盘重启设备 → 登录 OpenWrt → 系统 → 晶晨宝盒 → 安装 OpenWrt → 选择设备型号：409 → 点击安装
+            ### OEC/OECT：刷入EMMC方法
+            - 解压 OpenWrt 固件压缩包
+            - 使用 RKDevTool.exe 线刷至emmc
 
       - name: Delete old releases
         if: ${{ env.PACKAGED_STATUS == 'success' && !cancelled() }}
