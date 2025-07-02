@@ -41,6 +41,9 @@ uci commit argon
 # 设置ttyd自动登录
 sed -i 's/\/bin\/login/\/bin\/login -f root/' /etc/config/ttyd
 
+# 注释无效源
+sed -i 's|^src/gz immortalwrt_kenzo|#&|' /etc/opkg/distfeeds.conf
+
 # 判断是否为OES设备，若是OES设备则启用灯控脚本
 if [ "$(cat /proc/device-tree/model 2>/dev/null | tr -d '\0')" = "OneThing Cloud OES" ]; then
     [ -f "/usr/sbin/oes_sata_leds.sh" ] && {
