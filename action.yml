@@ -33,11 +33,11 @@ inputs:
   openwrt_size:
     description: "Set the rootfs size(Unit: MiB)."
     required: false
-    default: ""
+    default: "2048"
   builder_name:
     description: "Set OpenWrt builder signature."
     required: false
-    default: ""
+    default: "AlexZhao"
 
 runs:
   using: "composite"
