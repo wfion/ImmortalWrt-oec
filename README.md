@@ -7,8 +7,8 @@
 # 功能特性
 | 内置插件                 | 状态 | 内置插件         | 状态 | 内置插件         | 状态 | 
 |:------------------------:|:----:|:----------------:|:----:|:----------------:|:----:|
-| PassWall2                 | ✅   | lucky                   | ✅   | store                 | ✅   |
-| HomeProxy                | ✅   | nikki                       | ✅   | docker              | ✅   |
+| PassWall2                 | ✅   | nikki                   | ✅   | HomeProxy                 | ✅   |
+| store                | ✅   | lucky                       | ✅   | docker              | ✅   |
 
 
 ## WXY-OES 定制内容
