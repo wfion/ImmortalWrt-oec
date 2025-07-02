@@ -25,7 +25,7 @@ sed -i "s/DISTRIB_REVISION='*.*'/DISTRIB_REVISION=' By Only'/g" package/base-fil
 #
 
 # 修改luci-app-store版本号
-grep -q '^[[:space:]]*PKG_VERSION:=' feeds/kenzo/luci-app-store/Makefile && [[ $(grep '^[[:space:]]*PKG_VERSION:=' feeds/kenzo/luci-app-store/Makefile | cut -d= -f2-) == *-* ]] && sed -i -e "s/^\([[:space:]]*PKG_VERSION:=\).*/\1$(grep '^[[:space:]]*PKG_VERSION:=' feeds/kenzo/luci-app-store/Makefile | cut -d= -f2- | cut -d- -f1)/" -e "/^[[:space:]]*#/b; /^[[:space:]]*PKG_RELEASE:=/c\PKG_RELEASE:=$(grep '^[[:space:]]*PKG_VERSION:=' feeds/kenzo/luci-app-store/Makefile | cut -d= -f2- | cut -d- -f2-)" feeds/kenzo/luci-app-store/Makefile
+# grep -q '^[[:space:]]*PKG_VERSION:=' feeds/kenzo/luci-app-store/Makefile && [[ $(grep '^[[:space:]]*PKG_VERSION:=' feeds/kenzo/luci-app-store/Makefile | cut -d= -f2-) == *-* ]] && sed -i -e "s/^\([[:space:]]*PKG_VERSION:=\).*/\1$(grep '^[[:space:]]*PKG_VERSION:=' feeds/kenzo/luci-app-store/Makefile | cut -d= -f2- | cut -d- -f1)/" -e "/^[[:space:]]*#/b; /^[[:space:]]*PKG_RELEASE:=/c\PKG_RELEASE:=$(grep '^[[:space:]]*PKG_VERSION:=' feeds/kenzo/luci-app-store/Makefile | cut -d= -f2- | cut -d- -f2-)" feeds/kenzo/luci-app-store/Makefile
 
 # 修改首页samba4快速设置路径问题
 # sed -i 's|/cgi-bin/luci/admin/services/samba4|/cgi-bin/luci/admin/nas/samba4|g' feeds/kenzo/luci-app-quickstart/htdocs/luci-static/quickstart/index.js
