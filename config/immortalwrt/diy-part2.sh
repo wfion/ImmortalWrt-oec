@@ -24,6 +24,11 @@ sed -i "s/DISTRIB_REVISION='*.*'/DISTRIB_REVISION=' By Only'/g" package/base-fil
 # ------------------------------- Other started -------------------------------
 #
 
+# 修改快速设置路径问题
+if grep -q '/cgi-bin/luci/admin/services/samba4' feeds/kenzo/luci-app-quickstart/htdocs/luci-static/quickstart/index.js; then
+    sed -i 's|/cgi-bin/luci/admin/services/samba4|/cgi-bin/luci/admin/nas/samba4|g' feeds/kenzo/luci-app-quickstart/htdocs/luci-static/quickstart/index.js
+fi
+
 #
 # Apply patch
 # git apply ../config/patches/{0001*,0002*}.patch --directory=feeds/luci
