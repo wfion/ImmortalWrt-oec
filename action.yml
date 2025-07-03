@@ -33,7 +33,11 @@ inputs:
   openwrt_size:
     description: "Set the rootfs size(Unit: MiB)."
     required: false
-    default: "2048"
+    default: "2048" 
+  boot_size: 
+    description: "Set boot partition size(Unit: MiB)."
+    required: false
+    default: "512" 
   builder_name:
     description: "Set OpenWrt builder signature."
     required: false
@@ -79,6 +83,7 @@ runs:
         [[ -n "${{ inputs.openwrt_kernel }}" ]] && make_command="${make_command} -k ${{ inputs.openwrt_kernel }}"
         [[ -n "${{ inputs.auto_kernel }}" ]] && make_command="${make_command} -a ${{ inputs.auto_kernel }}"
         [[ -n "${{ inputs.openwrt_size }}" ]] && make_command="${make_command} -s ${{ inputs.openwrt_size }}"
+        [[ -n "${{ inputs.boot_size }}" ]] && make_command="${make_command} -B ${{ inputs.boot_size }}"
         [[ -n "${{ inputs.builder_name }}" ]] && make_command="${make_command} -n ${{ inputs.builder_name }}"
         sudo ./remake ${make_command}
 
