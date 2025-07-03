@@ -46,6 +46,11 @@ jobs:
           sudo timedatectl set-timezone "${TZ}"
           echo "status=success" >> ${GITHUB_OUTPUT}
 
+      - name: Install Clang compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang
+
       - name: Create simulated physical disk
         run: |
           mnt_size=$(expr $(df -h /mnt | tail -1 | awk '{print $4}' | sed 's/[[:alpha:]]//g' | sed 's/\..*//') - 1)
@@ -195,4 +200,3 @@ jobs:
           repository: ${{ github.repository }}
           retain_days: 1
           keep_minimum_runs: 2
-          
