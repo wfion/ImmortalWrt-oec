@@ -15,10 +15,6 @@ sed -i '1i src-git nikki https://github.com/nikkinikki-org/OpenWrt-nikki.git;mai
 rm -rf package/luci-app-poweroffdevice
 git clone https://github.com/sirpdboy/luci-app-poweroffdevice package/luci-app-poweroffdevice
 
-# Add luci-app-passwall2
-rm -rf package/luci-app-passwall2
-git clone https://github.com/xiaorouji/openwrt-passwall2.git package/luci-app-passwall2
-
 # other
 # rm -rf package/emortal/{autosamba,ipv6-helper}
 
