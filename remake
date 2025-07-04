@@ -977,7 +977,7 @@ refactor_rootfs() {
 
     # Turn off hw_flow by default
     [[ -f "etc/config/turboacc" ]] && {
-        sed -i "s|option hw_flow.*|option hw_flow '0'|g" etc/config/turboacc
+        sed -i "s|option hw_flow.*|option hw_flow '1'|g" etc/config/turboacc
         sed -i "s|option sw_flow.*|option sw_flow '0'|g" etc/config/turboacc
     }
 
