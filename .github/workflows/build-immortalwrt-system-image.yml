@@ -13,7 +13,7 @@ env:
   DIY_P1_SH: config/immortalwrt/diy-part1.sh
   DIY_P2_SH: config/immortalwrt/diy-part2.sh
   TZ: Asia/Shanghai
-  PLATFORM: "rockchip" 
+  PLATFORM: "rockchip"  # 设置目标硬件平台
 
 jobs:
   build:
@@ -25,47 +25,45 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          path: main-repo
-
-      - name: Upload build script
-        run: |
-          mkdir -p scripts
-          cp main-repo/build-openwrt.sh scripts/
-          chmod +x scripts/build-openwrt.sh
+          path: source
 
       - name: Initialization environment
         id: init
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
+          # 清理系统资源
           docker rmi $(docker images -q) 2>/dev/null || true
           [[ -n "${AGENT_TOOLSDIRECTORY}" ]] && sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android 2>/dev/null || true
-          sudo swapoff -a || true
-          sudo rm -f /swapfile /mnt/swapfile || true
+          
+          # 安装编译依赖
           sudo -E apt-get -y update
-          sudo -E apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* powershell openjdk* mongodb* moby* || true
           sudo -E apt-get -y install $(curl -fsSL https://tinyurl.com/ubuntu2204-make-openwrt)
-          sudo -E systemctl daemon-reload
-          sudo -E apt-get -y autoremove --purge
-          sudo -E apt-get clean
-          sudo sed -i '/NVM_DIR/d;/skel/d' /root/{.bashrc,.profile} || true
-          sudo rm -rf ~/{.cargo,.dotnet,.rustup} || true
+          
+          # 系统设置
           sudo timedatectl set-timezone "${TZ}"
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Create virtual disk
         run: |
+          # 计算可用空间
           mnt_size=$(expr $(df -h /mnt | tail -1 | awk '{print $4}' | sed 's/[[:alpha:]]//g' | sed 's/\..*//') - 1)
           root_size=$(expr $(df -h / | tail -1 | awk '{print $4}' | sed 's/[[:alpha:]]//g' | sed 's/\..*//') - 4)
+          
+          # 创建虚拟磁盘
           sudo truncate -s "${mnt_size}"G /mnt/mnt.img
           sudo truncate -s "${root_size}"G /root.img
           sudo losetup /dev/loop6 /mnt/mnt.img
           sudo losetup /dev/loop7 /root.img
+          
+          # 设置LVM
           sudo pvcreate /dev/loop6
           sudo pvcreate /dev/loop7
           sudo vgcreate github /dev/loop6 /dev/loop7
           sudo lvcreate -n runner -l 100%FREE github
+          
+          # 格式化和挂载
           sudo mkfs.xfs /dev/github/runner
           sudo mkdir -p /builder
           sudo mount /dev/github/runner /builder
@@ -77,24 +75,30 @@ jobs:
         working-directory: /builder
         if: ${{ steps.init.outputs.status }} == 'success' && !cancelled()
         run: |
+          # 获取最新版本标签
           LATEST_TAG=$(curl -sL "https://api.github.com/repos/immortalwrt/immortalwrt/tags" | grep -oP '"name": "\K[^"]+' | head -n 1)
           [[ -z "$LATEST_TAG" ]] && { echo "::error::Failed to get latest tag"; exit 1; }
+          
+          # 克隆源码
           REPO_URL="https://github.com/immortalwrt/immortalwrt"
-          FINAL_TAGS_NAME="immortalwrt_${LATEST_TAG}"
           git clone -b ${LATEST_TAG} --single-branch --filter=blob:none ${REPO_URL} openwrt
+          
+          # 设置符号链接
           ln -sf /builder/openwrt ${GITHUB_WORKSPACE}/openwrt
-          echo "build_tag=OpenWrt_${FINAL_TAGS_NAME}_$(date +"%Y.%m.%d-%H%M")" >> ${GITHUB_OUTPUT}
+          
+          # 输出变量
+          echo "build_tag=OpenWrt_immortalwrt_${LATEST_TAG}_$(date +"%Y%m%d")" >> ${GITHUB_OUTPUT}
           echo "REPO_URL=${REPO_URL}" >> ${GITHUB_OUTPUT}
-          echo "TAGS_NAME=${FINAL_TAGS_NAME}" >> ${GITHUB_OUTPUT}
+          echo "TAGS_NAME=immortalwrt_${LATEST_TAG}" >> ${GITHUB_OUTPUT}
           echo "status=success" >> ${GITHUB_OUTPUT}
-          df -hT ${PWD}
 
       - name: Apply custom configuration
         run: |
           cd openwrt/
-          [[ -f "${GITHUB_WORKSPACE}/${FEEDS_CONF}" ]] && cp -f ${GITHUB_WORKSPACE}/${FEEDS_CONF} feeds.conf.default
-          chmod +x ${GITHUB_WORKSPACE}/${DIY_P1_SH}
-          ${GITHUB_WORKSPACE}/${DIY_P1_SH}
+          # 应用自定义配置
+          [[ -f "${GITHUB_WORKSPACE}/source/${FEEDS_CONF}" ]] && cp -f ${GITHUB_WORKSPACE}/source/${FEEDS_CONF} feeds.conf.default
+          chmod +x ${GITHUB_WORKSPACE}/source/${DIY_P1_SH}
+          ${GITHUB_WORKSPACE}/source/${DIY_P1_SH}
 
       - name: Update and install feeds
         run: |
@@ -105,10 +109,11 @@ jobs:
       - name: Load final configuration
         run: |
           cd openwrt/
-          [[ -d "${GITHUB_WORKSPACE}/files" ]] && cp -rf ${GITHUB_WORKSPACE}/files .
-          [[ -e "${GITHUB_WORKSPACE}/${CONFIG_FILE}" ]] && cp -f ${GITHUB_WORKSPACE}/${CONFIG_FILE} .config
-          chmod +x ${GITHUB_WORKSPACE}/${DIY_P2_SH}
-          ${GITHUB_WORKSPACE}/${DIY_P2_SH}
+          # 应用最终配置
+          [[ -d "${GITHUB_WORKSPACE}/source/files" ]] && cp -rf ${GITHUB_WORKSPACE}/source/files .
+          [[ -e "${GITHUB_WORKSPACE}/source/${CONFIG_FILE}" ]] && cp -f ${GITHUB_WORKSPACE}/source/${CONFIG_FILE} .config
+          chmod +x ${GITHUB_WORKSPACE}/source/${DIY_P2_SH}
+          ${GITHUB_WORKSPACE}/source/${DIY_P2_SH}
 
       - name: Download packages
         run: |
@@ -124,43 +129,50 @@ jobs:
           make -j$(($(nproc) + 1)) V=s || make -j1 V=s
           echo "status=success" >> ${GITHUB_OUTPUT}
 
-      - name: Prepare for image building
+      - name: Prepare rootfs
         if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
         run: |
           cd openwrt/
           mkdir -p output
+          # 复制根文件系统并创建平台标识
           cp -f bin/targets/*/*/*rootfs.tar.gz output/
           echo "${{ env.PLATFORM }}" > output/platform.txt
-          cp -f .config output/config
           echo "status=success" >> ${GITHUB_OUTPUT}
 
       - name: Build firmware image
         id: build-image
         if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
         run: |
-          mkdir -p openwrt-armsr
-          cp openwrt/output/*rootfs.tar.gz openwrt-armsr/
-          cp openwrt/output/platform.txt openwrt-armsr/
-
-          ./scripts/build-openwrt.sh
+          # 创建固件构建目录
+          mkdir -p image-builder
+          cp openwrt/output/*rootfs.tar.gz image-builder/
+          cp openwrt/output/platform.txt image-builder/
           
+          # 复制构建脚本
+          cp source/build-openwrt.sh ./
+          chmod +x build-openwrt.sh
+          
+          # 执行构建脚本
+          ./build-openwrt.sh
+          
+          # 移动生成的固件
           mkdir -p openwrt/output/firmware
           mv openwrt/out/*.gz openwrt/output/firmware/
           mv openwrt/out/*.info openwrt/output/firmware/
           
+          # 输出构建信息
           echo "FIRMWARE_FILE=$(ls openwrt/output/firmware/*.img.gz)" >> $GITHUB_OUTPUT
-          echo "BUILDER_NAME=$FORCE_BUILDER_NAME" >> $GITHUB_OUTPUT
-          echo "PLATFORM=$PLATFORM" >> $GITHUB_OUTPUT
+          echo "PLATFORM=${{ env.PLATFORM }}" >> $GITHUB_OUTPUT
 
+      # 使用最新版 upload-artifact@v4
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: ${{ steps.build-image.outputs.FIRMWARE_FILE }} != '' && !cancelled()
         with:
-          name: openwrt-artifacts
+          name: openwrt-firmware
           path: |
             openwrt/output/firmware/*.gz
             openwrt/output/firmware/*.info
-            openwrt/output/config
           retention-days: 3
 
       - name: Create release
@@ -171,27 +183,24 @@ jobs:
           tag_name: ${{ steps.codes.outputs.build_tag }}
           name: ImmortalWrt ${{ steps.codes.outputs.TAGS_NAME }}
           body: |
-            ### Firmware Information
-            - **Board**: ${{ env.OPENWRT_BOARD }}
-            - **Platform**: ${{ env.PLATFORM }}
-            - **Builder**: ${{ steps.build-image.outputs.BUILDER_NAME }}
-            - **Source**: [${{ steps.codes.outputs.TAGS_NAME }}](${{ steps.codes.outputs.REPO_URL }})
-            - **Default IP**: DHCP
-            - **Default Password**: password
+            ### 固件信息
+            - **设备**: ${{ env.OPENWRT_BOARD }}
+            - **平台**: ${{ env.PLATFORM }}
+            - **构建时间**: $(date +"%Y-%m-%d %H:%M")
+            - **源码版本**: [${{ steps.codes.outputs.TAGS_NAME }}](${{ steps.codes.outputs.REPO_URL }})
             
-            ### Flashing Instructions
-            1. Extract the downloaded firmware archive
-            2. Write the `.img.gz` file to USB using tools like Rufus or BalenaEtcher
-            3. Boot device from USB
-            4. Login to OpenWrt (IP: DHCP, User: root, Password: password)
-            5. Use Amlogic toolbox to install to eMMC
+            ### 默认设置
+            - 管理地址: DHCP
+            - 用户名: root
+            - 密码: password
             
-            ### Partition Layout
-            - Boot: ${{ env.BOOT_SIZE || '512' }}MB (${{ env.BOOT_FS || 'ext4' }})
-            - Root: ${{ env.ROOT_SIZE || '2048' }}MB (btrfs)
-          files: |
-            openwrt/output/firmware/*.gz
-            openwrt/output/firmware/*.info
+            ### 刷机指南
+            1. 解压下载的固件压缩包
+            2. 使用 Rufus 或 BalenaEtcher 将 .img.gz 文件写入 U 盘
+            3. 从 U 盘启动设备
+            4. 登录 OpenWrt (IP: DHCP, 用户: root, 密码: password)
+            5. 使用晶晨宝盒工具刷入 eMMC
+          files: openwrt/output/firmware/*.gz
           draft: false
           prerelease: false
         env:
@@ -206,7 +215,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cleanup old workflows
+      - name: Cleanup workflows
         uses: Mattraks/delete-workflow-runs@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
