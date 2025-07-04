@@ -113,10 +113,12 @@ uboot_meson_gxbb=("p201.bin" "s905.bin")
 make_board="all"
 
 # Set OpenWrt firmware size (Unit: MiB, boot_mb >= 256, root_mb >= 512)
-boot_mb="512"
-root_mb="2048"
-# Set OpenWrt builder signature
+boot_mb="256"
+root_mb="1024"
 builder_name="AlexZhao"
+
+force_boot_mb="512"
+force_root_mb="2048"
 
 # Set font color
 STEPS="[\033[95m STEPS \033[0m]"
@@ -243,7 +245,7 @@ init_var() {
             ;;
         -n | --BuilderName)
             if [[ -n "${2}" ]]; then
-                builder_name="${2// /}"
+                echo -e "${NOTE} Builder name is fixed to [AlexZhao], ignoring -n parameter"
                 shift 2
             else
                 error_msg "Invalid -n parameter [ ${2} ]!"
@@ -260,14 +262,11 @@ init_var() {
         esac
     done
 
-    # Set the image size, such as [ -s 512/2560 ] or [ -s 2560 ]
+    builder_name="AlexZhao"
+    echo -e "${INFO} Builder name forced to: [ ${builder_name} ]"
+
     [[ -n "${img_mb}" ]] && {
-        if [[ "${img_mb}" =~ / ]]; then
-            boot_mb="${img_mb%%/*}"
-            root_mb="${img_mb##*/}"
-        else
-            root_mb="${img_mb}"
-        fi
+        echo -e "${NOTE} Partition size forced to 512/2048, ignoring -s parameter"
     }
 }
 
@@ -668,6 +667,13 @@ make_image() {
     process_msg "(1/6) Make OpenWrt image."
     cd ${current_path}
 
+    boot_mb="${force_boot_mb}" 
+    root_mb="${force_root_mb}" 
+    builder_name="AlexZhao" 
+    
+    echo -e "${INFO} 强制分区大小: boot=${boot_mb}MB, root=${root_mb}MB"
+    echo -e "${INFO} 强制构建者签名: ${builder_name}"
+
     # Set Armbian image file parameters
     [[ "${PLATFORM}" == "amlogic" ]] && {
         skip_mb="4"
@@ -693,8 +699,6 @@ make_image() {
     board_release="${different_files}/${board}/rootfs/etc/openwrt-board-release.conf"
     [[ -f "${board_release}" ]] && source ${board_release}
 
-    # echo -e "${INFO} The [ ${board} ] OpenWrt image partition status: [ skip:${skip_mb} / boot:${boot_mb} / rootfs:${root_mb} ] MiB."
-
     # Set OpenWrt filename
     [[ -d "${out_path}" ]] || mkdir -p ${out_path}
     openwrt_filename="openwrt${source_codename}_${PLATFORM}_${board}_k${kernel}_$(date +"%Y.%m.%d").img"
@@ -705,8 +709,15 @@ make_image() {
     truncate -s ${IMG_SIZE}M ${build_image_file} >/dev/null 2>&1
 
     parted -s ${build_image_file} mklabel ${partition_table_type} 2>/dev/null
-    parted -s ${build_image_file} mkpart primary ${bootfs_type} $((skip_mb))MiB $((skip_mb + boot_mb - 1))MiB 2>/dev/null
-    parted -s ${build_image_file} mkpart primary btrfs $((skip_mb + boot_mb))MiB 100% 2>/dev/null
+    
+    # 强制分区大小计算
+    BOOT_END=$((skip_mb + boot_mb - 1))
+    ROOT_END=$((skip_mb + boot_mb + root_mb - 1))
+    
+    echo -e "${INFO} 创建分区: boot=${boot_mb}MB (${skip_mb}-${BOOT_END}MiB), root=${root_mb}MB ($((skip_mb + boot_mb))-${ROOT_END}MiB)"
+    
+    parted -s ${build_image_file} mkpart primary ${bootfs_type} ${skip_mb}MiB ${BOOT_END}MiB 2>/dev/null
+    parted -s ${build_image_file} mkpart primary btrfs $((skip_mb + boot_mb))MiB ${ROOT_END}MiB 2>/dev/null
 
     # Mount the OpenWrt image file
     loop_new="$(losetup -P -f --show "${build_image_file}")"
