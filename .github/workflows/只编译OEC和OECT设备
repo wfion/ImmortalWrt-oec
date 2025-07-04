@@ -1,0 +1,240 @@
+name: Build ImmortalWrt System Image for OEC/OECT
+
+on:
+  repository_dispatch:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 5 * * *
+
+env:
+  TARGET_DEVICES: "oec oect" 
+  FEEDS_CONF: config/immortalwrt/feeds.conf.default
+  CONFIG_FILE: config/immortalwrt/config
+  DIY_P1_SH: config/immortalwrt/diy-part1.sh
+  DIY_P2_SH: config/immortalwrt/diy-part2.sh
+  TZ: Asia/Shanghai
+  PLATFORM: "rockchip"
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    if: ${{ github.event.repository.owner.id }} == ${{ github.event.sender.id }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: source
+
+      - name: Initialization environment
+        id: init
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          # 清理系统资源
+          docker rmi $(docker images -q) 2>/dev/null || true
+          [[ -n "${AGENT_TOOLSDIRECTORY}" ]] && sudo rm -rf "${AGENT_TOOLSDIRECTORY}"
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android 2>/dev/null || true
+          
+          # 安装编译依赖
+          sudo -E apt-get -y update
+          sudo -E apt-get -y install $(curl -fsSL https://tinyurl.com/ubuntu2204-make-openwrt)
+          
+          # 系统设置
+          sudo timedatectl set-timezone "${TZ}"
+          echo "status=success" >> ${GITHUB_OUTPUT}
+
+      - name: Create virtual disk
+        run: |
+          # 计算可用空间
+          mnt_size=$(expr $(df -h /mnt | tail -1 | awk '{print $4}' | sed 's/[[:alpha:]]//g' | sed 's/\..*//') - 1)
+          root_size=$(expr $(df -h / | tail -1 | awk '{print $4}' | sed 's/[[:alpha:]]//g' | sed 's/\..*//') - 4)
+          
+          # 创建虚拟磁盘
+          sudo truncate -s "${mnt_size}"G /mnt/mnt.img
+          sudo truncate -s "${root_size}"G /root.img
+          sudo losetup /dev/loop6 /mnt/mnt.img
+          sudo losetup /dev/loop7 /root.img
+          
+          # 设置LVM
+          sudo pvcreate /dev/loop6
+          sudo pvcreate /dev/loop7
+          sudo vgcreate github /dev/loop6 /dev/loop7
+          sudo lvcreate -n runner -l 100%FREE github
+          
+          # 格式化和挂载
+          sudo mkfs.xfs /dev/github/runner
+          sudo mkdir -p /builder
+          sudo mount /dev/github/runner /builder
+          sudo chown -R runner:runner /builder
+          df -Th
+
+      - name: Clone ImmortalWrt source
+        id: codes
+        working-directory: /builder
+        if: ${{ steps.init.outputs.status }} == 'success' && !cancelled()
+        run: |
+          # 获取最新版本标签
+          LATEST_TAG=$(curl -sL "https://api.github.com/repos/immortalwrt/immortalwrt/tags" | grep -oP '"name": "\K[^"]+' | head -n 1)
+          [[ -z "$LATEST_TAG" ]] && { echo "::error::Failed to get latest tag"; exit 1; }
+          
+          # 克隆源码
+          REPO_URL="https://github.com/immortalwrt/immortalwrt"
+          git clone -b ${LATEST_TAG} --single-branch --filter=blob:none ${REPO_URL} openwrt
+          
+          # 设置符号链接
+          ln -sf /builder/openwrt ${GITHUB_WORKSPACE}/openwrt
+          
+          # 输出变量
+          echo "build_tag=OpenWrt_immortalwrt_${LATEST_TAG}_$(date +"%Y%m%d")" >> ${GITHUB_OUTPUT}
+          echo "REPO_URL=${REPO_URL}" >> ${GITHUB_OUTPUT}
+          echo "TAGS_NAME=immortalwrt_${LATEST_TAG}" >> ${GITHUB_OUTPUT}
+          echo "status=success" >> ${GITHUB_OUTPUT}
+
+      - name: Apply custom configuration
+        run: |
+          cd openwrt/
+          # 应用自定义配置
+          [[ -f "${GITHUB_WORKSPACE}/source/${FEEDS_CONF}" ]] && cp -f ${GITHUB_WORKSPACE}/source/${FEEDS_CONF} feeds.conf.default
+          chmod +x ${GITHUB_WORKSPACE}/source/${DIY_P1_SH}
+          ${GITHUB_WORKSPACE}/source/${DIY_P1_SH}
+
+      - name: Update and install feeds
+        run: |
+          cd openwrt/
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Load final configuration
+        run: |
+          cd openwrt/
+          # 应用最终配置
+          [[ -d "${GITHUB_WORKSPACE}/source/files" ]] && cp -rf ${GITHUB_WORKSPACE}/source/files .
+          [[ -e "${GITHUB_WORKSPACE}/source/${CONFIG_FILE}" ]] && cp -f ${GITHUB_WORKSPACE}/source/${CONFIG_FILE} .config
+          chmod +x ${GITHUB_WORKSPACE}/source/${DIY_P2_SH}
+          ${GITHUB_WORKSPACE}/source/${DIY_P2_SH}
+          
+          # 只编译OEC和OECT设备
+          for device in ${{ env.TARGET_DEVICES }}; do
+            sed -i "/CONFIG_TARGET_DEVICE_rockchip_DEVICE_${device}/d" .config
+            echo "CONFIG_TARGET_DEVICE_rockchip_DEVICE_${device}=y" >> .config
+          done
+          
+          # 禁用OES设备
+          sed -i "/CONFIG_TARGET_DEVICE_rockchip_DEVICE_oes/d" .config
+          echo "# CONFIG_TARGET_DEVICE_rockchip_DEVICE_oes is not set" >> .config
+          
+          # 显示配置确认
+          echo "Current device configuration:"
+          grep "CONFIG_TARGET_DEVICE_rockchip_DEVICE" .config
+
+      - name: Download packages
+        run: |
+          cd openwrt/
+          make defconfig
+          make download -j$(nproc)
+          find dl -size -1024c -exec rm -f {} \; || true
+
+      - name: Compile OpenWrt
+        id: compile
+        run: |
+          cd openwrt/
+          make -j$(($(nproc) + 1)) V=s || make -j1 V=s
+          echo "status=success" >> ${GITHUB_OUTPUT}
+
+      - name: Prepare rootfs
+        if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
+        run: |
+          cd openwrt/
+          mkdir -p output
+          
+          # 复制根文件系统并创建平台标识
+          for device in ${{ env.TARGET_DEVICES }}; do
+            cp -f bin/targets/*/*/*${device}*rootfs.tar.gz output/ || true
+          done
+          
+          echo "${{ env.PLATFORM }}" > output/platform.txt
+          echo "status=success" >> ${GITHUB_OUTPUT}
+
+      - name: Build firmware image
+        id: build-image
+        if: ${{ steps.compile.outputs.status }} == 'success' && !cancelled()
+        run: |
+          # 创建固件构建目录
+          mkdir -p image-builder
+          cp openwrt/output/*rootfs.tar.gz image-builder/
+          cp openwrt/output/platform.txt image-builder/
+          
+          # 复制构建脚本
+          cp source/build-openwrt.sh ./
+          chmod +x build-openwrt.sh
+          
+          # 执行构建脚本
+          ./build-openwrt.sh
+          
+          # 移动生成的固件
+          mkdir -p openwrt/output/firmware
+          mv openwrt/out/*.gz openwrt/output/firmware/
+          mv openwrt/out/*.info openwrt/output/firmware/
+          
+          # 输出构建信息
+          echo "FIRMWARE_FILE=$(ls openwrt/output/firmware/*.img.gz)" >> $GITHUB_OUTPUT
+          echo "PLATFORM=${{ env.PLATFORM }}" >> $GITHUB_OUTPUT
+          echo "TARGET_DEVICES=${{ env.TARGET_DEVICES }}" >> $GITHUB_OUTPUT
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ steps.build-image.outputs.FIRMWARE_FILE }} != '' && !cancelled()
+        with:
+          name: openwrt-firmware
+          path: |
+            openwrt/output/firmware/*.gz
+            openwrt/output/firmware/*.info
+          retention-days: 3
+
+      - name: Create release
+        id: create-release
+        uses: softprops/action-gh-release@v1
+        if: ${{ steps.build-image.outputs.FIRMWARE_FILE }} != '' && !cancelled()
+        with:
+          tag_name: ${{ steps.codes.outputs.build_tag }}
+          name: ImmortalWrt ${{ steps.codes.outputs.TAGS_NAME }} (OEC/OECT)
+          body: |
+            ### 固件信息
+            - **目标设备**: ${{ steps.build-image.outputs.TARGET_DEVICES }}
+            - **平台**: ${{ env.PLATFORM }}
+            - **构建时间**: $(date +"%Y-%m-%d %H:%M")
+            - **源码版本**: [${{ steps.codes.outputs.TAGS_NAME }}](${{ steps.codes.outputs.REPO_URL }})
+            
+            ### 默认设置
+            - 管理地址: DHCP
+            - 用户名: root
+            - 密码: password
+            
+            ### 刷机指南 (仅限 OEC/OECT)
+            1. 解压下载的固件压缩包
+            2. 使用 RKDevTool.exe 将固件刷入设备
+            3. 注意: 此固件仅适用于 OEC/OECT 设备
+          files: openwrt/output/firmware/*.gz
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup old releases
+        uses: dev-drprasad/delete-older-releases@v0.2.1
+        if: ${{ steps.create-release.conclusion }} == 'success'
+        with:
+          keep_latest: 2
+          delete_tag_pattern: "OpenWrt_*"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup workflows
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          retain_days: 1
+          keep_minimum_runs: 2
