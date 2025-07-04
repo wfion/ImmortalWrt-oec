@@ -1,6 +1,6 @@
 # 项目说明
 - 该项目是基于immortalwrt-master进行的定制
-- - 适配机型：WXY-OEC/OECT、WXY-OES
+- - 适配机型：WXY-OEC/OECT
 
 
 
