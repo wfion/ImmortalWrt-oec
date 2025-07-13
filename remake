@@ -114,10 +114,10 @@ make_board="all"
 
 # Set OpenWrt firmware size (Unit: MiB, boot_mb >= 256, root_mb >= 512)
 boot_mb="256"
-root_mb="1024"
+root_mb="2048"
 builder_name="AlexZhao"
 
-force_boot_mb="512"
+force_boot_mb="256"
 force_root_mb="2048"
 
 # Set font color
@@ -669,10 +669,8 @@ make_image() {
 
     boot_mb="${force_boot_mb}" 
     root_mb="${force_root_mb}" 
-    builder_name="AlexZhao" 
     
     echo -e "${INFO} 强制分区大小: boot=${boot_mb}MB, root=${root_mb}MB"
-    echo -e "${INFO} 强制构建者签名: ${builder_name}"
 
     # Set Armbian image file parameters
     [[ "${PLATFORM}" == "amlogic" ]] && {
