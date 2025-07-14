@@ -708,14 +708,8 @@ make_image() {
 
     parted -s ${build_image_file} mklabel ${partition_table_type} 2>/dev/null
     
-    # 强制分区大小计算
-    BOOT_END=$((skip_mb + boot_mb - 1))
-    ROOT_END=$((skip_mb + boot_mb + root_mb - 1))
-    
-    echo -e "${INFO} 创建分区: boot=${boot_mb}MB (${skip_mb}-${BOOT_END}MiB), root=${root_mb}MB ($((skip_mb + boot_mb))-${ROOT_END}MiB)"
-    
-    parted -s ${build_image_file} mkpart primary ${bootfs_type} ${skip_mb}MiB ${BOOT_END}MiB 2>/dev/null
-    parted -s ${build_image_file} mkpart primary btrfs $((skip_mb + boot_mb))MiB ${ROOT_END}MiB 2>/dev/null
+    parted -s ${build_image_file} mkpart primary ${bootfs_type} $((skip_mb))MiB $((skip_mb + boot_mb - 1))MiB 2>/dev/null
+    parted -s ${build_image_file} mkpart primary btrfs $((skip_mb + boot_mb))MiB 100% 2>/dev/null
 
     # Mount the OpenWrt image file
     loop_new="$(losetup -P -f --show "${build_image_file}")"
